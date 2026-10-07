@@ -1,19 +1,15 @@
-param(
-    [string]$GitHubUser = "",
-    [string]$RepoName = "GYMBROS",
-    [string]$PageName = "CALCULADORA.html"
-)
-
 $ErrorActionPreference = "Stop"
 
-if (-not $GitHubUser) {
-    Write-Host "" 
-    Write-Host "Debes pasar tu usuario de GitHub:" -ForegroundColor Yellow
-    Write-Host "Ejemplo: .\subir_github.ps1 -GitHubUser tuusuario" -ForegroundColor Cyan
-    exit 1
-}
+$GitHubUser = "enricm93-cmyk"
+$RepoName = "GYMBROS"
+$PageName = "CALCULADORA.html"
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+$gitExe = $null
+if (Test-Path "C:\Program Files\Git\cmd\git.exe") {
+    $gitExe = "C:\Program Files\Git\cmd\git.exe"
+} elseif (Get-Command git -ErrorAction SilentlyContinue) {
+    $gitExe = (Get-Command git).Source
+} else {
     Write-Host "Git no está instalado o no está en PATH." -ForegroundColor Red
     Write-Host "Instálalo desde: https://git-scm.com/downloads" -ForegroundColor Yellow
     exit 1
@@ -25,47 +21,59 @@ Set-Location $scriptDir
 $indexPath = Join-Path $scriptDir "index.html"
 $pagePath = Join-Path $scriptDir $PageName
 
+if (-not (Test-Path $indexPath)) {
+    Write-Host "No existe index.html en la carpeta del proyecto." -ForegroundColor Red
+    exit 1
+}
+
 if (-not (Test-Path $pagePath)) {
-    if (Test-Path $indexPath) {
-        Copy-Item $indexPath $pagePath
-        Write-Host "Se ha copiado index.html como $PageName" -ForegroundColor Green
-    }
-    else {
-        Write-Host "No se encontró index.html ni $PageName. Revisa la carpeta del proyecto." -ForegroundColor Red
-        exit 1
-    }
+    Copy-Item $indexPath $pagePath
+    Write-Host "Se ha copiado index.html como $PageName" -ForegroundColor Green
 }
 
 $repoUrl = "https://github.com/$GitHubUser/$RepoName.git"
 
+& $gitExe config --global user.name $GitHubUser
+& $gitExe config --global user.email "$GitHubUser@users.noreply.github.com"
+
 if (-not (Test-Path ".git")) {
-    git init | Out-Null
+    & $gitExe init | Out-Null
 }
 
-git add .
-git commit -m "Primer commit" 2>$null
+& $gitExe add .
+& $gitExe status --short
+
+try {
+    & $gitExe commit -m "Primer commit" 2>$null
+} catch {
+    Write-Host "No había cambios nuevos para confirmar." -ForegroundColor Yellow
+}
+
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "No había cambios nuevos para confirmar o Git no está configurado." -ForegroundColor Yellow
+    Write-Host "No había cambios nuevos para confirmar." -ForegroundColor Yellow
 }
 
-git branch -M main
+& $gitExe branch -M main
 
-$existingRemote = git remote get-url origin 2>$null
-if (-not $existingRemote) {
-    git remote add origin $repoUrl
+$existingRemote = (& $gitExe remote get-url origin 2>$null)
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($existingRemote)) {
+    & $gitExe remote add origin $repoUrl
 } else {
-    git remote set-url origin $repoUrl
+    & $gitExe remote set-url origin $repoUrl
 }
 
 Write-Host "" 
-Write-Host "Repositorio listo para subir:" -ForegroundColor Green
-Write-Host $repoUrl -ForegroundColor Cyan
+Write-Host "Subiendo a GitHub..." -ForegroundColor Green
+& $gitExe push -u origin main
+
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "" 
+    Write-Host "Hubo un problema con el push. Revisa que el repositorio exista en GitHub y vuelve a ejecutarlo." -ForegroundColor Red
+    exit 1
+}
+
 Write-Host "" 
-Write-Host "Ahora ejecuta este comando manualmente si GitHub te pide iniciar sesión:" -ForegroundColor Yellow
-Write-Host "git push -u origin main" -ForegroundColor Cyan
-Write-Host "" 
-Write-Host "Cuando esté publicado, la URL será:" -ForegroundColor Green
-Write-Host "https://$GitHubUser.github.io/$RepoName/$PageName" -ForegroundColor Cyan
-Write-Host "" 
-Write-Host "Si quieres la página principal en la raíz, usa index.html y la URL será:" -ForegroundColor Yellow
-Write-Host "https://$GitHubUser.github.io/$RepoName/" -ForegroundColor Cyan
+Write-Host "Publicado correctamente." -ForegroundColor Green
+Write-Host "Repositorio: $repoUrl" -ForegroundColor Cyan
+Write-Host "URL principal: https://$GitHubUser.github.io/$RepoName/" -ForegroundColor Cyan
+Write-Host "URL calculadora: https://$GitHubUser.github.io/$RepoName/$PageName" -ForegroundColor Cyan
